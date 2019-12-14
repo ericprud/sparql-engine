@@ -22,13 +22,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-import { Term } from './data-model'
+import { Term } from './rdf-terms'
 
 /**
  * A RDF Triple (pattern)
  * @author Thomas Minier
  */
-export class Triple {
+export default class Triple {
   private readonly _subject: Term
   private readonly _predicate: Term
   private readonly _object: Term
