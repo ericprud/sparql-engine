@@ -24,21 +24,23 @@ SOFTWARE.
 
 'use strict'
 
+import { Term, Variable } from '../rdf/rdf-model'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import { rdf } from '../utils'
 import { Bindings } from '../rdf/bindings'
+
+type SPARQLGroup = Map<Variable, Term[]>
 
 /**
  * Build a new aggregate group from a set of SPARQL variables
  * @param variables - Set of SPARQL variables
  * @return A new aggregate group
  */
-function buildNewGroup (variables: string[]): Object {
-  return variables.reduce((rows, v) => {
-    rows[v] = []
-    return rows
-  }, {})
+function buildNewGroup (variables: Variable[]): SPARQLGroup {
+  const group = new Map()
+  variables.forEach(v => group.set(v, []))
+  return group
 }
 
 /**
@@ -48,7 +50,7 @@ function buildNewGroup (variables: string[]): Object {
  * @param  bindings  - Set of bindings to hash
  * @return Hashed set of bindings
  */
-function _hashBindings (variables: string[], bindings: Bindings): string {
+function _hashBindings (variables: Variable[], bindings: Bindings): string {
   // if no GROUP BY variables are used (in the case of an empty GROUP BY)
   // then we use a default grouping key
   if (variables.length === 0) {
@@ -56,7 +58,7 @@ function _hashBindings (variables: string[], bindings: Bindings): string {
   }
   return variables.map(v => {
     if (bindings.has(v)) {
-      return bindings.get(v)
+      return bindings.get(v)!.toRDF()
     }
     return 'null'
   }).join(';')
@@ -70,26 +72,26 @@ function _hashBindings (variables: string[], bindings: Bindings): string {
  * @param variables - GROUP BY variables
  * @return A {@link PipelineStage} which evaluate the GROUP BY operation
  */
-export default function sparqlGroupBy (source: PipelineStage<Bindings>, variables: string[]) {
-  const groups: Map<string, any> = new Map()
+export default function sparqlGroupBy (source: PipelineStage<Bindings>, variables: Variable[]) {
+  const groups: Map<string, SPARQLGroup> = new Map()
   const keys: Map<string, Bindings> = new Map()
   const engine = Pipeline.getInstance()
   let op = engine.map(source, (bindings: Bindings) => {
     const key = _hashBindings(variables, bindings)
-      // create a new group is needed
+    // create a new group is needed
     if (!groups.has(key)) {
       keys.set(key, bindings.filter(variable => variables.indexOf(variable) > -1))
-      groups.set(key, buildNewGroup(Array.from(bindings.variables())))
+      groups.set(key, buildNewGroup(bindings.variables()))
     }
-      // parse each binding in the intermediate format used by SPARQL expressions
-      // and insert it into the corresponding group
+    // parse each binding in the intermediate format used by SPARQL expressions
+    // and insert it into the corresponding group
     bindings.forEach((variable, value) => {
-      groups.get(key)[variable].push(rdf.parseTerm(value))
+      groups.get(key)!.get(variable)!.push(value)
     })
     return null
   })
   return engine.mergeMap(engine.collect(op), () => {
-    const aggregates: any[] = []
+    const aggregates: Bindings[] = []
       // transform each group in a set of bindings
     groups.forEach((group, key) => {
         // also add the GROUP BY keys to the set of bindings

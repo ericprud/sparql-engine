@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Triple } from './rdf/rdf-model'
 import { terms } from './rdf-terms'
 import { Util } from 'n3'
 import { Pipeline } from './engine/pipeline/pipeline'
@@ -96,15 +97,15 @@ export namespace rdf {
    * @param  {Object} triple - Triple Pattern to process
    * @return The number of variables in the Triple Pattern
    */
-  export function countVariables (triple: Algebra.TripleObject): number {
+  export function countVariables (triple: Triple): number {
     let count = 0
-    if (isVariable(triple.subject)) {
+    if (triple.getSubject().isVariable()) {
       count++
     }
-    if (isVariable(triple.predicate)) {
+    if (triple.getPredicate().isVariable()) {
       count++
     }
-    if (isVariable(triple.object)) {
+    if (triple.getObject().isVariable()) {
       count++
     }
     return count
@@ -150,16 +151,16 @@ export namespace sparql {
    * @param  pattern - Triple Pattern
    * @return The set of SPARQL variables in the triple pattern
    */
-  export function variablesFromPattern (pattern: Algebra.TripleObject): string[] {
+  export function variablesFromPattern (pattern: Triple): string[] {
     const res: string[] = []
-    if (rdf.isVariable(pattern.subject)) {
-      res.push(pattern.subject)
+    if (pattern.getSubject().isVariable()) {
+      res.push(pattern.getSubject().toRDF())
     }
-    if (rdf.isVariable(pattern.predicate)) {
-      res.push(pattern.predicate)
+    if (pattern.getPredicate().isVariable()) {
+      res.push(pattern.getPredicate().toRDF())
     }
-    if (rdf.isVariable(pattern.object)) {
-      res.push(pattern.object)
+    if (pattern.getObject().isVariable()) {
+      res.push(pattern.getObject().toRDF())
     }
     return res
   }
@@ -170,8 +171,8 @@ export namespace sparql {
    * @param  patterns - Set of triple pattern
    * @return Order set of triple patterns
    */
-  export function leftLinearJoinOrdering (patterns: Algebra.TripleObject[]): Algebra.TripleObject[] {
-    const results: Algebra.TripleObject[] = []
+  export function leftLinearJoinOrdering (patterns: Triple[]): Triple[] {
+    const results: Triple[] = []
     const x = new Set()
     if (patterns.length > 0) {
       // sort pattern by join predicate
@@ -181,7 +182,7 @@ export namespace sparql {
       while (patterns.length > 0) {
         // find the next pattern with a common join predicate
         let index = patterns.findIndex(pattern => {
-          return includes(variables, pattern.subject) || includes(variables, pattern.predicate) || includes(variables, pattern.object)
+          return includes(variables, pattern.getSubject().toRDF()) || includes(variables, pattern.getPredicate().toRDF()) || includes(variables, pattern.getObject().toRDF())
         })
         // if not found, trigger a cartesian product with the first pattern of the sorted set
         if (index < 0) {
@@ -198,59 +199,38 @@ export namespace sparql {
 }
 
 /**
- * Bound a triple pattern using a set of bindings, i.e., substitute variables in the triple pattern
- * using the set of bindings provided
- * @param triple  - Triple pattern
- * @param bindings - Set of bindings
- * @return An new, bounded triple pattern
- */
-export function applyBindings (triple: Algebra.TripleObject, bindings: Bindings): Algebra.TripleObject {
-  const newTriple = Object.assign({}, triple)
-  if (triple.subject.startsWith('?') && bindings.has(triple.subject)) {
-    newTriple.subject = bindings.get(triple.subject)!
-  }
-  if (triple.predicate.startsWith('?') && bindings.has(triple.predicate)) {
-    newTriple.predicate = bindings.get(triple.predicate)!
-  }
-  if (triple.object.startsWith('?') && bindings.has(triple.object)) {
-    newTriple.object = bindings.get(triple.object)!
-  }
-  return newTriple
-}
-
-/**
  * Recursively apply bindings to every triple in a SPARQL group pattern
  * @param  group - SPARQL group pattern to process
  * @param  bindings - Set of bindings to use
  * @return A new SPARQL group pattern with triples bounded
  */
-export function deepApplyBindings (group: Algebra.PlanNode, bindings: Bindings): Algebra.PlanNode {
-  switch (group.type) {
-    case 'bgp':
-      // WARNING property paths are not supported here
-      const triples = (group as Algebra.BGPNode).triples as Algebra.TripleObject[]
-      const bgp: Algebra.BGPNode = {
-        type: 'bgp',
-        triples: triples.map(t => bindings.bound(t))
-      }
-      return bgp
-    case 'group':
-    case 'optional':
-    case 'service':
-    case 'union':
-      const newGroup: Algebra.GroupNode = {
-        type: group.type,
-        patterns: (group as Algebra.GroupNode).patterns.map(g => deepApplyBindings(g, bindings))
-      }
-      return newGroup
-    case 'query':
-      let subQuery: Algebra.RootNode = (group as Algebra.RootNode)
-      subQuery.where = subQuery.where.map(g => deepApplyBindings(g, bindings))
-      return subQuery
-    default:
-      return group
-  }
-}
+// export function deepApplyBindings (group: Algebra.PlanNode, bindings: Bindings): Algebra.PlanNode {
+//   switch (group.type) {
+//     case 'bgp':
+//       // WARNING property paths are not supported here
+//       const triples = (group as Algebra.BGPNode).triples as Algebra.TripleObject[]
+//       const bgp: Algebra.BGPNode = {
+//         type: 'bgp',
+//         triples: triples.map(t => bindings.bound(t))
+//       }
+//       return bgp
+//     case 'group':
+//     case 'optional':
+//     case 'service':
+//     case 'union':
+//       const newGroup: Algebra.GroupNode = {
+//         type: group.type,
+//         patterns: (group as Algebra.GroupNode).patterns.map(g => deepApplyBindings(g, bindings))
+//       }
+//       return newGroup
+//     case 'query':
+//       let subQuery: Algebra.RootNode = (group as Algebra.RootNode)
+//       subQuery.where = subQuery.where.map(g => deepApplyBindings(g, bindings))
+//       return subQuery
+//     default:
+//       return group
+//   }
+// }
 
 /**
  * Extends all set of bindings produced by an iterator with another set of bindings

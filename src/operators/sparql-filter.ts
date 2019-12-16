@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { BooleanLiteral } from '../rdf/literals'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import SPARQLExpression from './expressions/sparql-expression'
@@ -43,7 +44,10 @@ import { CustomFunctions } from '../engine/plan-builder'
 export default function sparqlFilter (source: PipelineStage<Bindings>, expression: Algebra.Expression, customFunctions?: CustomFunctions) {
   const expr = new SPARQLExpression(expression, customFunctions)
   return Pipeline.getInstance().filter(source, (bindings: Bindings) => {
-    const value: any = expr.evaluate(bindings)
-    return value !== null && value.asJS
+    const value = expr.evaluate(bindings)
+    if (value === null) {
+      return false
+    }
+    return value instanceof BooleanLiteral && value.toJS()
   })
 }

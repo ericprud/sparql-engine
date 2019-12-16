@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Term, Variable } from '../rdf/rdf-model'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import { Bindings } from '../rdf/bindings'
@@ -36,7 +37,7 @@ import { Bindings } from '../rdf/bindings'
  */
 function _hash (bindings: Bindings): string {
   const items: string[] = []
-  bindings.forEach((k: string, v: string) => items.push(`${k}=${encodeURIComponent(v)}`))
+  bindings.forEach((k: Variable, v: Term) => items.push(`${k.toRDF()}=${encodeURIComponent(v.toRDF())}`))
   items.sort()
   return items.join('&')
 }

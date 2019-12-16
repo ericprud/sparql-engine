@@ -23,6 +23,7 @@ SOFTWARE.
 */
 
 import { Term, IRI, Variable } from './rdf-terms'
+import Triple from './rdf-triple'
 import { Util } from 'n3'
 import { parseLiteral } from './literals'
 export { default as Triple } from './rdf-triple'
@@ -43,12 +44,12 @@ function cleanIRI (iri: string): string {
 
 /**
  * Parse a RDF Term into the appropriate representation
- * @param term RDF term to parse
+ * @param term - RDF term to parse
  * @return Parsed RDF Term
  */
 export function parseTerm (term: string): Term {
   if (term.startsWith('?')) {
-    return new Variable(term)
+    return Variable.allocate(term)
   } else if (term.startsWith('\"')) {
     const value = Util.getLiteralValue(term)
     const lang = Util.getLiteralLanguage(term)
@@ -58,4 +59,15 @@ export function parseTerm (term: string): Term {
     return new IRI(term)
   }
   throw new SyntaxError(`Unkown RDF Term found during parsing: ${term}`)
+}
+
+/**
+ * Parse a RDF Triple from a tuple of strings
+ * @param s - Triple subject
+ * @param p - Triple predicate
+ * @param o - Triple object
+ * @return A RDF Triple
+ */
+export function parseTriple (s: string, p: string, o: string): Triple {
+  return new Triple(parseTerm(s), parseTerm(p), parseTerm(o))
 }

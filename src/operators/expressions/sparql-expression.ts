@@ -24,6 +24,8 @@ SOFTWARE.
 
 'use strict'
 
+import { Term, Variable, parseTerm } from '../../rdf/rdf-model'
+import { ConcreteTerm } from '../../rdf/rdf-terms'
 import SPARQL_AGGREGATES from './sparql-aggregates'
 import SPARQL_OPERATIONS from './sparql-operations'
 import { terms } from '../../rdf-terms'
@@ -36,17 +38,17 @@ import { CustomFunctions } from '../../engine/plan-builder'
 /**
  * An input SPARQL expression to be compiled
  */
-export type InputExpression = Algebra.Expression | string | string[]
+export type InputExpression = Algebra.Expression | Term | Term[]
 
 /**
  * A SPARQL expression compiled as a function
  */
-export type CompiledExpression = (bindings: Bindings) => terms.RDFTerm | terms.RDFTerm[] | null
+export type CompiledExpression = (bindings: Bindings) => Term | Term[] | null
 
-function bindArgument (variable: string): (bindings: Bindings) => terms.RDFTerm | null {
+function bindArgument (variable: Variable): (bindings: Bindings) => Term | null {
   return (bindings: Bindings) => {
     if (bindings.has(variable)) {
-      return rdf.parseTerm(bindings.get(variable)!)
+      return bindings.get(variable)!
     }
     return null
   }
@@ -63,7 +65,10 @@ export default class SPARQLExpression {
    * Constructor
    * @param expression - SPARQL expression
    */
-  constructor (expression: InputExpression, customFunctions?: CustomFunctions) {
+  constructor (expression: InputExpression | string, customFunctions?: CustomFunctions) {
+    if (isString(expression)) {
+      expression = parseTerm(expression)
+    }
     this._expression = this._compileExpression(expression, customFunctions)
   }
 
@@ -74,20 +79,28 @@ export default class SPARQLExpression {
    */
   private _compileExpression (expression: InputExpression, customFunctions?: CustomFunctions): CompiledExpression {
     // simple case: the expression is a SPARQL variable or a RDF term
-    if (isString(expression)) {
-      if (rdf.isVariable(expression)) {
+    if (expression instanceof ConcreteTerm) {
+      if (expression.isVariable()) {
         return bindArgument(expression)
       }
-      const compiledTerm = rdf.parseTerm(expression)
-      return () => compiledTerm
+      return () => expression
     } else if (isArray(expression)) {
       // IN and NOT IN expressions accept arrays as argument
-      const compiledTerms = expression.map(rdf.parseTerm)
-      return () => compiledTerms
-    } else if (expression.type === 'operation') {
-      const opExpression = <Algebra.SPARQLExpression> expression
+      return () => expression
+    } else if ((expression as Algebra.Expression).type === 'operation') {
+      const opExpression = expression as Algebra.SPARQLExpression
       // operation case: recursively compile each argument, then evaluate the expression
-      const args = opExpression.args.map(arg => this._compileExpression(arg, customFunctions))
+      const args = opExpression.args.map(arg => {
+        let argument: InputExpression
+        if (isString(arg)) {
+          argument = parseTerm(arg)
+        } else if (isArray(arg)) {
+          argument = arg.map(x => parseTerm(x))
+        } else {
+          argument = arg as Algebra.SPARQLExpression
+        }
+        return this._compileExpression(argument, customFunctions)
+      })
       if (!(opExpression.operator in SPARQL_OPERATIONS)) {
         throw new Error(`Unsupported SPARQL operation: ${opExpression.operator}`)
       }
@@ -95,10 +108,10 @@ export default class SPARQLExpression {
       return (bindings: Bindings) => {
         return operation(...args.map(arg => arg(bindings)))
       }
-    } else if (expression.type === 'aggregate') {
-      const aggExpression = <Algebra.AggregateExpression> expression
+    } else if ((expression as Algebra.Expression).type === 'aggregate') {
+      const aggExpression = expression as Algebra.AggregateExpression
       // aggregation case
-      if (!(aggExpression.aggregation! in SPARQL_AGGREGATES)) {
+      if (!(aggExpression.aggregation in SPARQL_AGGREGATES)) {
         throw new Error(`Unsupported SPARQL aggregation: ${aggExpression.aggregation}`)
       }
       const aggregation = SPARQL_AGGREGATES[aggExpression.aggregation]
@@ -108,8 +121,8 @@ export default class SPARQLExpression {
         }
         return bindings
       }
-    } else if (expression.type === 'functionCall') {
-      const functionExpression = <Algebra.FunctionCallExpression> expression
+    } else if ((expression as Algebra.Expression).type === 'functionCall') {
+      const functionExpression = expression as Algebra.FunctionCallExpression
       const customFunction =
         (customFunctions && customFunctions[functionExpression.function])
           ? customFunctions[functionExpression.function]
@@ -139,7 +152,7 @@ export default class SPARQLExpression {
    * @param  bindings - Set of mappings
    * @return Results of the evaluation
    */
-  evaluate (bindings: Bindings): terms.RDFTerm | terms.RDFTerm[] | null {
+  evaluate (bindings: Bindings): Term | Term[] | null {
     return this._expression(bindings)
   }
 }

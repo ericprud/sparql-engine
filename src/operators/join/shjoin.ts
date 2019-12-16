@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+import { Variable } from '../../rdf/rdf-model'
 import { Pipeline } from '../../engine/pipeline/pipeline'
 import { PipelineStage } from '../../engine/pipeline/pipeline-engine'
 import HashJoinTable from './hash-join-table'
@@ -35,7 +36,7 @@ import { Bindings } from '../../rdf/bindings'
  * @param  outerTable - Hash table in which bindings are probed
  * @return A {@link PipelineStage} that performs one half of a symmetric hash join
  */
-function halfHashJoin (joinKey: string, source: PipelineStage<Bindings>, innerTable: HashJoinTable, outerTable: HashJoinTable): PipelineStage<Bindings> {
+function halfHashJoin (joinKey: Variable, source: PipelineStage<Bindings>, innerTable: HashJoinTable, outerTable: HashJoinTable): PipelineStage<Bindings> {
   const engine = Pipeline.getInstance()
   return engine.mergeMap(source, (bindings: Bindings) => {
     if (!bindings.has(joinKey)) {
@@ -44,10 +45,10 @@ function halfHashJoin (joinKey: string, source: PipelineStage<Bindings>, innerTa
     const key = bindings.get(joinKey)!
 
     // insert into inner table
-    innerTable.put(key, bindings)
+    innerTable.put(key.toRDF(), bindings)
 
     // probe into outer table
-    return engine.from(outerTable.join(key, bindings))
+    return engine.from(outerTable.join(key.toRDF(), bindings))
   })
 }
 
@@ -58,7 +59,7 @@ function halfHashJoin (joinKey: string, source: PipelineStage<Bindings>, innerTa
  * @param  right - Right source (a {@link PipelineStage})
  * @return A {@link PipelineStage} that performs a symmetric hash join between the sources
  */
-export default function symHashJoin (joinKey: string, left: PipelineStage<Bindings>, right: PipelineStage<Bindings>) {
+export default function symHashJoin (joinKey: Variable, left: PipelineStage<Bindings>, right: PipelineStage<Bindings>) {
   const leftTable = new HashJoinTable()
   const rightTable = new HashJoinTable()
   const leftOp = halfHashJoin(joinKey, left, leftTable, rightTable)

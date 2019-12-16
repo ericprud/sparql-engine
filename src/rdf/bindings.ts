@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Triple, Term, Variable, parseTerm } from './rdf-model'
 import { Algebra } from 'sparqljs'
 import { isNull, isUndefined } from 'lodash'
 import { rdf } from '../utils'
@@ -53,37 +54,31 @@ export abstract class Bindings {
   abstract get isEmpty (): boolean
 
   /**
-   * Get an iterator over the SPARQL variables in the set
-   * @return An iterator over the SPARQL variables in the set
-   */
-  abstract variables (): IterableIterator<string>
-
-  /**
-   * Get an iterator over the RDF terms in the set
-   * @return An iterator over the RDF terms in the set
-   */
-  abstract values (): IterableIterator<string>
-
-  /**
    * Get the RDF Term associated with a SPARQL variable
    * @param variable - SPARQL variable
    * @return The RDF Term associated with the given SPARQL variable
    */
-  abstract get (variable: string): string | null
+  abstract get (variable: Variable): Term | null
 
   /**
    * Test if mappings exists for a SPARQL variable
    * @param variable - SPARQL variable
    * @return True if a mappings exists for this variable, False otherwise
    */
-  abstract has (variable: string): boolean
+  abstract has (variable: Variable): boolean
 
   /**
    * Add a mapping SPARQL variable -> RDF Term to the set
    * @param variable - SPARQL variable
    * @param value - RDF Term
    */
-  abstract set (variable: string, value: string): void
+  abstract set (variable: Variable, value: Term): void
+
+  /**
+   * Get the set of variables bound in the set of bindings
+   * @return The set of variables bound in the set of bindings
+   */
+  abstract variables (): Array<Variable>
 
   /**
    * Get metadata attached to the set using a key
@@ -117,7 +112,7 @@ export abstract class Bindings {
    * @param callback - Callback to invoke
    * @return
    */
-  abstract forEach (callback: (variable: string, value: string) => void): void
+  abstract forEach (callback: (variable: Variable, value: Term) => void): void
 
   /**
    * Remove all mappings from the set
@@ -137,7 +132,7 @@ export abstract class Bindings {
    */
   toObject (): Object {
     return this.reduce((acc, variable, value) => {
-      acc[variable] = value
+      acc[variable.toRDF()] = value.toRDF()
       return acc
     }, {})
   }
@@ -148,10 +143,7 @@ export abstract class Bindings {
    */
   toString (): string {
     const value = this.reduce((acc, variable, value) => {
-      if (! value.startsWith('"')) {
-        value = `<${value}>`
-      }
-      return `${acc} ${variable} -> ${value},`
+      return `${acc} ${variable.toRDF()} -> ${value.toRDF()},`
     }, '{')
     return value.substring(0, value.length - 1) + ' }'
   }
@@ -183,12 +175,11 @@ export abstract class Bindings {
     if (this.size !== other.size) {
       return false
     }
-    for (let variable in other.variables()) {
-      if (!(this.has(variable)) || (this.get(variable) !== other.get(variable))) {
-        return false
-      }
-    }
-    return true
+    let res = true
+    other.forEach(variable => {
+      res = res && (this.has(variable) && this.get(variable)!.equals(other.get(variable)!))
+    })
+    return res
   }
 
   /**
@@ -196,18 +187,20 @@ export abstract class Bindings {
    * @param triple  - Triple pattern
    * @return An new, bounded triple pattern
    */
-  bound (triple: Algebra.TripleObject): Algebra.TripleObject {
-    const newTriple = Object.assign({}, triple)
-    if (rdf.isVariable(triple.subject) && this.has(triple.subject)) {
-      newTriple.subject = this.get(triple.subject)!
+  bound (triple: Triple): Triple {
+    let s = triple.getSubject()
+    let p = triple.getPredicate()
+    let o = triple.getObject()
+    if (s.isVariable() && this.has(s as Variable)) {
+      s = this.get(s as Variable)!
     }
-    if (rdf.isVariable(triple.predicate) && this.has(triple.predicate)) {
-      newTriple.predicate = this.get(triple.predicate)!
+    if (p.isVariable() && this.has(p as Variable)) {
+      p = this.get(p as Variable)!
     }
-    if (rdf.isVariable(triple.object) && this.has(triple.object)) {
-      newTriple.object = this.get(triple.object)!
+    if (o.isVariable() && this.has(o as Variable)) {
+      o = this.get(o as Variable)!
     }
-    return newTriple
+    return new Triple(s, p, o)
   }
 
   /**
@@ -215,7 +208,7 @@ export abstract class Bindings {
    * @param values - Pairs [variable, value] to add to the set
    * @return A new Bindings with the additionnal mappings
    */
-  extendMany (values: Array<[string, string]>): Bindings {
+  extendMany (values: Array<[Variable, Term]>): Bindings {
     const cloned = this.clone()
     values.forEach(v => {
       cloned.set(v[0], v[1])
@@ -257,19 +250,19 @@ export abstract class Bindings {
    * @return The results of the set difference
    */
   difference (other: Bindings): Bindings {
-    return this.filter((variable: string, value: string) => {
-      return (!other.has(variable)) || (value !== other.get(variable))
+    return this.filter((variable: Variable, value: Term) => {
+      return (!other.has(variable)) || (!value.equals(other.get(variable)!))
     })
   }
 
   /**
    * Test if the set of bindings is a subset of another set of mappings.
    * @param  other - Superset of mappings
-   * @return Ture if the set of bindings is a subset of another set of mappings, False otherwise
+   * @return True if the set of bindings is a subset of another set of mappings, False otherwise
    */
   isSubset (other: Bindings): boolean {
-    return Array.from(this.variables()).every((v: string) => {
-      return other.has(v) && other.get(v) === this.get(v)
+    return this.every((v: Variable) => {
+      return other.has(v) && other.get(v)!.equals(this.get(v)!)
     })
   }
 
@@ -278,7 +271,7 @@ export abstract class Bindings {
    * @param mapper - Transformation function (variable, value) => [string, string]
    * @return A new set of mappings
    */
-  map (mapper: (variable: string, value: string) => [string | null, string | null]): Bindings {
+  map (mapper: (variable: Variable, value: Term) => [Variable | null, Term | null]): Bindings {
     const result = this.empty()
     this.forEach((variable, value) => {
       let [newVar, newValue] = mapper(variable, value)
@@ -294,7 +287,7 @@ export abstract class Bindings {
    * @param mapper - Transformation function
    * @return A new set of mappings
    */
-  mapVariables (mapper: (variable: string, value: string) => string | null): Bindings {
+  mapVariables (mapper: (variable: Variable, value: Term) => Variable | null): Bindings {
     return this.map((variable, value) => [mapper(variable, value), value])
   }
 
@@ -303,7 +296,7 @@ export abstract class Bindings {
    * @param mapper - Transformation function
    * @return A new set of mappings
    */
-  mapValues (mapper: (variable: string, value: string) => string | null): Bindings {
+  mapValues (mapper: (variable: Variable, value: Term) => Term | null): Bindings {
     return this.map((variable, value) => [variable, mapper(variable, value)])
   }
 
@@ -312,7 +305,7 @@ export abstract class Bindings {
    * @param predicate - Predicate function
    * @return A new set of mappings
    */
-  filter (predicate: (variable: string, value: string) => boolean): Bindings {
+  filter (predicate: (variable: Variable, value: Term) => boolean): Bindings {
     return this.map((variable, value) => {
       if (predicate(variable, value)) {
         return [variable, value]
@@ -327,7 +320,7 @@ export abstract class Bindings {
    * @param start - Value used to start the accumulation
    * @return The accumulated value
    */
-  reduce<T> (reducer: (acc: T, variable: string, value: string) => T, start: T): T {
+  reduce<T> (reducer: (acc: T, variable: Variable, value: Term) => T, start: T): T {
     let acc: T = start
     this.forEach((variable, value) => {
       acc = reducer(acc, variable, value)
@@ -340,7 +333,7 @@ export abstract class Bindings {
    * @param  predicate - Function to test for each mapping
    * @return True if some mappings in the set some the predicate function, False otheriwse
    */
-  some (predicate: (variable: string, value: string) => boolean): boolean {
+  some (predicate: (variable: Variable, value: Term) => boolean): boolean {
     let res = false
     this.forEach((variable, value) => {
       res = res || predicate(variable, value)
@@ -353,7 +346,7 @@ export abstract class Bindings {
    * @param  predicate - Function to test for each mapping
    * @return True if every mappings in the set some the predicate function, False otheriwse
    */
-  every (predicate: (variable: string, value: string) => boolean): boolean {
+  every (predicate: (variable: Variable, value: Term) => boolean): boolean {
     let res = true
     this.forEach((variable, value) => {
       res = res && predicate(variable, value)
@@ -367,7 +360,7 @@ export abstract class Bindings {
  * @author Thomas Minier
  */
 export class BindingBase extends Bindings {
-  private readonly _content: Map<string, string>
+  private readonly _content: Map<Variable, Term>
 
   constructor () {
     super()
@@ -390,32 +383,28 @@ export class BindingBase extends Bindings {
   static fromObject (obj: Object): Bindings {
     const res = new BindingBase()
     for (let key in obj) {
-      res.set(!key.startsWith('?') ? `?${key}` : key, obj[key])
+      res.set(Variable.allocate(key), parseTerm(obj[key]))
     }
     return res
   }
 
-  variables (): IterableIterator<string> {
-    return this._content.keys()
-  }
-
-  values (): IterableIterator<string> {
-    return this._content.values()
-  }
-
-  get (variable: string): string | null {
+  get (variable: Variable): Term | null {
     if (this._content.has(variable)) {
       return this._content.get(variable)!
     }
     return null
   }
 
-  has (variable: string): boolean {
+  has (variable: Variable): boolean {
     return this._content.has(variable)
   }
 
-  set (variable: string, value: string): void {
+  set (variable: Variable, value: Term): void {
     this._content.set(variable, value)
+  }
+
+  variables (): Array<Variable> {
+    return Array.from(this._content.keys())
   }
 
   clear (): void {
@@ -426,7 +415,7 @@ export class BindingBase extends Bindings {
     return new BindingBase()
   }
 
-  forEach (callback: (variable: string, value: string) => void): void {
-    this._content.forEach((value, variable) => callback(variable, value))
+  forEach (callback: (variable: Variable, value: Term) => void): void {
+    this._content.forEach((value, variable) => callback(Variable.allocate(variable), value))
   }
 }

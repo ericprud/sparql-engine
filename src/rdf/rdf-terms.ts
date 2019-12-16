@@ -201,10 +201,34 @@ export class IRI extends ConcreteTerm {
 
 /**
  * An intermediate format to represent SPARQL variable
+ * @author Thomas Minier
  */
 export class Variable extends ConcreteTerm {
-  constructor (value: string) {
+  private static _allocated: Map<string, Variable> = new Map<string, Variable>()
+
+  /**
+   * The constructor for this class is private.
+   * To create new SPARQL variable, please use the static allocate method
+   * @param value - Variable value
+   */
+  private constructor (value: string) {
     super(value)
+  }
+
+  /**
+   * Build a new Variable or returns an exiting one.
+   * This method ensure that only one variable is created per value.
+   * @param value - Variable value
+   * @return A Variable
+   */
+  static allocate (value: string): Variable {
+    if (value.startsWith('?')) {
+      value = value.slice(1)
+    }
+    if (!Variable._allocated.has(value)) {
+      Variable._allocated.set(value, new Variable(value))
+    }
+    return Variable._allocated.get(value)!
   }
 
   equals (other: Term): boolean {
@@ -253,6 +277,34 @@ export abstract class Literal extends ConcreteTerm {
     this._datatype = datatype
     this._lang = lang
   }
+
+  /**
+   * Add the literal's value with another literal's value
+   * @param other - Other literal to sum with
+   * @return A literal that contains the sum of the two literals
+   */
+  abstract add (other: Literal): Literal
+
+  /**
+   * Substract the literal's value with another literal's value
+   * @param other - Other literal to substract with
+   * @return A literal that contains the substraction of the two literals
+   */
+  abstract minus (other: Literal): Literal
+
+  /**
+   * Multiply the literal's value with another literal's value
+   * @param other - Other literal to multiply with
+   * @return A literal that contains the multiplication of the two literals
+   */
+  abstract multiply (other: Literal): Literal
+
+  /**
+   * Divide the literal's value with another literal's value
+   * @param other - Other literal to divide with
+   * @return A literal that contains the division of the two literals
+   */
+  abstract div (other: Literal): Literal
 
   hasDatatype (): boolean {
     return this._datatype !== null

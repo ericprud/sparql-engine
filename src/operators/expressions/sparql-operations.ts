@@ -1,7 +1,7 @@
 /* file : sparql-operations.ts
 MIT License
 
-Copyright (c) 2018 Thomas Minier
+Copyright (c) 2018-2020 Thomas Minier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,24 +24,24 @@ SOFTWARE.
 
 'use strict'
 
+import { Literal, Term, IRI } from '../../rdf/rdf-model'
+import { BooleanLiteral, BufferLiteral, NumericLiteral, StringLiteral, DateLiteral } from '../../rdf/literals'
 import { rdf } from '../../utils'
-import { terms } from '../../rdf-terms'
-import * as moment from 'moment'
 import * as uuid from 'uuid/v4'
 import { isNull } from 'lodash'
 import * as crypto from 'crypto'
 
 /**
- * Return a high-orderpply a Hash function  to a RDF
+ * Return a high-orde which apply a Hash function to a RDF Term
  * and returns the corresponding RDF Literal
  * @param  {string} hashType - Type of hash (md5, sha256, etc)
  * @return {function} A function that hashes RDF term
  */
-function applyHash (hashType: string): (v: terms.RDFTerm) => terms.RDFTerm {
+function applyHash (hashType: string): (v: Term) => Term {
   return v => {
     const hash = crypto.createHash(hashType)
-    hash.update(v.value)
-    return terms.createLiteral(hash.digest('hex'))
+    hash.update(v.toJS())
+    return new BufferLiteral(hash.digest('hex'), 'hex', new IRI(rdf.XSD('hexBinary')))
   }
 }
 
@@ -58,317 +58,355 @@ export default {
   /*
     XQuery & XPath functions https://www.w3.org/TR/sparql11-query/#OperatorMapping
   */
-  '+': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) || terms.isDate(b)) {
-      return terms.createDate(a.asJS + b.asJS)
-    } else if (a.type === 'literal+type' && b.type === 'literal+type') {
-      return terms.createNumber(a.asJS + b.asJS, (<terms.TypedLiteral> a).datatype)
+  '+': function (a: Term, b: Term): Term {
+    if (a.isLiteral() && b.isLiteral()) {
+      return (a as Literal).add(b as Literal)
     }
-    return terms.createLiteral(a.asJS + b.asJS)
+    return new StringLiteral(`${a.toJS() + b.toJS()}`, null, null)
   },
 
-  '-': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) || terms.isDate(b)) {
-      return terms.createDate(moment(a.asJS - b.asJS))
-    } else if (a.type === 'literal+type' && b.type === 'literal+type') {
-      return terms.createNumber(a.asJS - b.asJS, (<terms.TypedLiteral> a).datatype)
+  '-': function (a: Term, b: Term): Term {
+    if (a.isLiteral() && b.isLiteral()) {
+      return (a as Literal).minus(b as Literal)
     }
-    return terms.createLiteral('')
+    return new StringLiteral(`${a.toJS() - b.toJS()}`, null, null)
   },
 
-  '*': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) || terms.isDate(b)) {
-      return terms.createDate(moment(a.asJS * b.asJS))
-    } else if (a.type === 'literal+type' && b.type === 'literal+type') {
-      return terms.createNumber(a.asJS * b.asJS, (<terms.TypedLiteral> a).datatype)
+  '*': function (a: Term, b: Term): Term {
+    if (a.isLiteral() && b.isLiteral()) {
+      return (a as Literal).multiply(b as Literal)
     }
-    return terms.createLiteral('')
+    return new StringLiteral(`${a.toJS() * b.toJS()}`, null, null)
   },
 
-  '/': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) || terms.isDate(b)) {
-      return terms.createDate(moment(a.asJS / b.asJS))
-    } else if (a.type === 'literal+type' && b.type === 'literal+type') {
-      return terms.createNumber(a.asJS / b.asJS, (<terms.TypedLiteral> a).datatype)
+  '/': function (a: Term, b: Term): Term {
+    if (a.isLiteral() && b.isLiteral()) {
+      return (a as Literal).multiply(b as Literal)
     }
-    return terms.createLiteral('')
+    return new StringLiteral(`${a.toJS() / b.toJS()}`, null, null)
   },
 
-  '=': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(a.asJS.isSame(b.asJS))
+  '=': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.equals(b))
+  },
+
+  '!=': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(!a.equals(b))
+  },
+
+  '<': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.compareTo(b) < 0)
+  },
+
+  '<=': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.compareTo(b) <= 0)
+  },
+
+  '>': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.compareTo(b) > 0)
+  },
+
+  '>=': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.compareTo(b) >= 0)
+  },
+
+  '!': function (a: Term): Term {
+    if (a instanceof BooleanLiteral) {
+      return BooleanLiteral.fromBoolean(!a.toJS())
     }
-    return terms.equals(a, b)
+    return BooleanLiteral.fromFalse()
   },
 
-  '!=': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(!(a.asJS.isSame(b.asJS)))
+  '&&': function (a: Term, b: Term): Term {
+    if (a instanceof BooleanLiteral && b instanceof BooleanLiteral) {
+      return BooleanLiteral.fromBoolean(a.toJS() && b.toJS())
     }
-    return terms.createBoolean(a.asJS !== b.asJS)
+    return BooleanLiteral.fromFalse()
   },
 
-  '<': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(a.asJS.isBefore(b.asJS))
+  '||': function (a: Term, b: Term): Term {
+    if (a instanceof BooleanLiteral && b instanceof BooleanLiteral) {
+      return new BooleanLiteral(`${a.toJS() || b.toJS()}`)
     }
-    return terms.createBoolean(a.asJS < b.asJS)
-  },
-
-  '<=': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(a.asJS.isSameOrBefore(b.asJS))
-    }
-    return terms.createBoolean(a.asJS <= b.asJS)
-  },
-
-  '>': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(a.asJS.isAfter(b.asJS))
-    }
-    return terms.createBoolean(a.asJS > b.asJS)
-  },
-
-  '>=': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (terms.isDate(a) && terms.isDate(b)) {
-      return terms.createBoolean(a.asJS.isSameOrAfter(b.asJS))
-    }
-    return terms.createBoolean(a.asJS >= b.asJS)
-  },
-
-  '!': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(!a.asJS)
-  },
-
-  '&&': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(a.asJS && b.asJS)
-  },
-
-  '||': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(a.asJS || b.asJS)
+    return BooleanLiteral.fromFalse()
   },
 
   /*
     SPARQL Functional forms https://www.w3.org/TR/sparql11-query/#func-forms
   */
-  'bound': function (a: terms.RDFTerm) {
-    return terms.createBoolean(!isNull(a))
+  'bound': function (a: Term): Term {
+    return BooleanLiteral.fromBoolean(!isNull(a))
   },
 
-  'sameterm': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    return terms.equals(a, b)
+  'sameterm': function (a: Term, b: Term): Term {
+    return BooleanLiteral.fromBoolean(a.equals(b))
   },
 
-  'in': function (a: terms.RDFTerm, b: terms.RDFTerm[]): terms.RDFTerm {
-    return terms.createBoolean(b.some(elt => a.asJS === elt.asJS))
+  'in': function (a: Term, b: Term[]): Term {
+    return BooleanLiteral.fromBoolean(b.some(elt => a.equals(elt)))
   },
 
-  'notin': function (a: terms.RDFTerm, b: terms.RDFTerm[]): terms.RDFTerm {
-    return terms.createBoolean(!b.some(elt => a.asJS === elt.asJS))
+  'notin': function (a: Term, b: Term[]): Term {
+    return BooleanLiteral.fromBoolean(!b.some(elt => a.equals(elt)))
   },
 
   /*
     Functions on RDF Terms https://www.w3.org/TR/sparql11-query/#func-rdfTerms
   */
 
-  'isiri': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(a.type === 'iri')
+  'isiri': function (a: Term): Term {
+    return BooleanLiteral.fromBoolean(a.isIRI())
   },
 
-  'isblank': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(a.type === 'bnode')
+  'isblank': function (a: Term): Term {
+    return BooleanLiteral.fromBoolean(a.isVariable())
   },
 
-  'isliteral': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(a.type.startsWith('literal'))
+  'isliteral': function (a: Term): Term {
+    return BooleanLiteral.fromBoolean(a.isLiteral())
   },
 
-  'isnumeric': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createBoolean(!isNaN(a.asJS))
+  'isnumeric': function (a: Term): Term {
+    return BooleanLiteral.fromBoolean(a.isLiteral() && a instanceof NumericLiteral)
   },
 
-  'str': function (a: terms.RDFTerm): terms.RDFTerm {
-    return a.type.startsWith('literal') ? a : terms.createLiteral(a.value)
-  },
-
-  'lang': function (a: terms.RDFTerm): terms.RDFTerm {
-    if (a.type === 'literal+lang') {
-      return terms.createLiteral((<terms.LangLiteral> a).lang.toLowerCase())
+  'str': function (a: Term): Term {
+    if (a.isLiteral() && a instanceof StringLiteral) {
+      return a
     }
-    return terms.createLiteral('')
+    return new StringLiteral(`${a.toJS()}`, null, null)
   },
 
-  'datatype': function (a: terms.RDFTerm): terms.RDFTerm {
-    switch (a.type) {
-      case 'literal':
-        return terms.createIRI(rdf.XSD('string'))
-      case 'literal+type':
-        return terms.createIRI((<terms.TypedLiteral> a).datatype)
-      case 'literal+lang':
-        return terms.createIRI(rdf.RDF('langString'))
-      default:
-        return terms.createLiteral('')
+  'lang': function (a: Term): Term {
+    if (a.isLiteral() && a instanceof Literal && a.hasLang()) {
+      return new StringLiteral(a.getLang()!, null, null)
     }
+    return StringLiteral.empty()
   },
 
-  'iri': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createIRI(a.value)
+  'datatype': function (a: Term): Term {
+    if (a.isLiteral() && a instanceof Literal) {
+      if (a.hasDatatype()) {
+        return a.getDatatype()!
+      } else if (a.hasLang()) {
+        return new IRI(rdf.RDF('langString'))
+      }
+      return new IRI(rdf.XSD('string'))
+    }
+    return StringLiteral.empty()
   },
 
-  'strdt': function (x: terms.RDFTerm, datatype: terms.RDFTerm): terms.RDFTerm {
-    return terms.createTypedLiteral(x.value, datatype.value)
+  'iri': function (a: Term): Term {
+    return new IRI(a.getValue())
   },
 
-  'strlang': function (x: terms.RDFTerm, lang: terms.RDFTerm): terms.RDFTerm {
-    return terms.createLangLiteral(x.value, lang.value)
+  'strdt': function (x: Term, datatype: Term): Term {
+    if (datatype instanceof IRI) {
+      return new StringLiteral(x.getValue(), datatype, null)
+    }
+    return new IRI('')
   },
 
-  'uuid': function (): terms.RDFTerm {
-    return terms.createIRI(`urn:uuid:${uuid()}`)
+  'strlang': function (x: Term, lang: Term): Term {
+    return new StringLiteral(x.getValue(), null, lang.getValue())
   },
 
-  'struuid': function (): terms.RDFTerm {
-    return terms.createLiteral(uuid())
+  'uuid': function (): Term {
+    return new StringLiteral(`urn:uuid:${uuid()}`, null, null)
+  },
+
+  'struuid': function (): Term {
+    return new StringLiteral(uuid(), null, null)
   },
 
   /*
     Functions on Strings https://www.w3.org/TR/sparql11-query/#func-strings
   */
 
-  'strlen': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.value.length, rdf.XSD('integer'))
+  'strlen': function (a: Term): Term {
+    return NumericLiteral.fromInteger(a.getValue().length)
   },
 
-  'substr': function (str: terms.RDFTerm, index: terms.RDFTerm, length?: terms.RDFTerm): terms.RDFTerm {
-    if (index.asJS < 1) {
-      throw new Error('SUBSTR error: the index of the first character in a string is 1 (according to the SPARQL W3C specs)')
+  'substr': function (str: Term, index: Term, length?: Term): Term {
+    if (str instanceof StringLiteral && index instanceof NumericLiteral) {
+      if (index.toJS() < 1) {
+        throw new Error('SUBSTR error: the index of the first character in a string is 1 (according to the SPARQL W3C specs)')
+      }
+      let value = str.getValue().substring(index.toJS() - 1)
+      if (length !== undefined && length instanceof NumericLiteral) {
+        value = value.substring(0, length.toJS())
+      }
+      return new StringLiteral(value, str.getDatatype(), str.getLang())
     }
-    let value = str.value.substring(index.asJS - 1)
-    if (length !== null && length !== undefined) {
-      value = value.substring(0, length.asJS)
+    return str
+  },
+
+  'ucase': function (a: Term): Term {
+    if (a instanceof StringLiteral) {
+      return new StringLiteral(a.getValue().toUpperCase(), a.getDatatype(), a.getLang())
     }
-    return terms.replaceLiteralValue(str, value)
+    return a
   },
 
-  'ucase': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.replaceLiteralValue(a, a.value.toUpperCase())
-  },
-
-  'lcase': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.replaceLiteralValue(a, a.value.toLowerCase())
-  },
-
-  'strstarts': function (string: terms.RDFTerm, substring: terms.RDFTerm): terms.RDFTerm {
-    const a = string.value
-    const b = substring.value
-    return terms.createBoolean(a.startsWith(b))
-  },
-
-  'strends': function (string: terms.RDFTerm, substring: terms.RDFTerm): terms.RDFTerm {
-    const a = string.value
-    const b = substring.value
-    return terms.createBoolean(a.endsWith(b))
-  },
-
-  'contains': function (string: terms.RDFTerm, substring: terms.RDFTerm): terms.RDFTerm {
-    const a = string.value
-    const b = substring.value
-    return terms.createBoolean(a.indexOf(b) >= 0)
-  },
-
-  'strbefore': function (str: terms.RDFTerm, token: terms.RDFTerm): terms.RDFTerm {
-    const index = str.value.indexOf(token.value)
-    const value = (index > -1) ? str.value.substring(0, index) : ''
-    return terms.replaceLiteralValue(str, value)
-  },
-
-  'strafter': function (str: terms.RDFTerm, token: terms.RDFTerm): terms.RDFTerm {
-    const index = str.value.indexOf(token.value)
-    const value = (index > -1) ? str.value.substring(index + token.value.length) : ''
-    return terms.replaceLiteralValue(str, value)
-  },
-
-  'encode_for_uri': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createLiteral(encodeURIComponent(a.value))
-  },
-
-  'concat': function (a: terms.RDFTerm, b: terms.RDFTerm): terms.RDFTerm {
-    if (a.type !== b.type) {
-      return terms.createLiteral(a.value + b.value)
+  'lcase': function (a: Term): Term {
+    if (a instanceof StringLiteral) {
+      return new StringLiteral(a.getValue().toLowerCase(), a.getDatatype(), a.getLang())
     }
-    return terms.replaceLiteralValue(a, a.value + b.value)
+    return a
   },
 
-  'langmatches': function (langTag: terms.RDFTerm, langRange: terms.RDFTerm): terms.RDFTerm {
+  'strstarts': function (str: Term, substring: Term): Term {
+    if (str instanceof StringLiteral && substring instanceof StringLiteral) {
+      return BooleanLiteral.fromBoolean(str.getValue().startsWith(substring.getValue()))
+    }
+    return BooleanLiteral.fromFalse()
+  },
+
+  'strends': function (str: Term, substring: Term): Term {
+    if (str instanceof StringLiteral && substring instanceof StringLiteral) {
+      return BooleanLiteral.fromBoolean(str.getValue().endsWith(substring.getValue()))
+    }
+    return BooleanLiteral.fromFalse()
+  },
+
+  'contains': function (str: Term, substring: Term): Term {
+    if (str instanceof StringLiteral && substring instanceof StringLiteral) {
+      return BooleanLiteral.fromBoolean(str.getValue().indexOf(substring.getValue()) >= 0)
+    }
+    return BooleanLiteral.fromFalse()
+  },
+
+  'strbefore': function (str: Term, token: Term): Term {
+    if (str instanceof StringLiteral && token instanceof StringLiteral) {
+      const index = str.getValue().indexOf(token.getValue())
+      const value = (index > -1) ? str.getValue().substring(0, index) : ''
+      return new StringLiteral(value, str.getDatatype(), str.getLang())
+    }
+    return str
+  },
+
+  'strafter': function (str: Term, token: Term): Term {
+    if (str instanceof StringLiteral && token instanceof StringLiteral) {
+      const index = str.getValue().indexOf(token.getValue())
+      const value = (index > -1) ? str.getValue().substring(index + token.getValue().length) : ''
+      return new StringLiteral(value, str.getDatatype(), str.getLang())
+    }
+    return str
+  },
+
+  'encode_for_uri': function (a: Term): Term {
+    return new StringLiteral(encodeURIComponent(a.getValue()), null, null)
+  },
+
+  'concat': function (a: Term, b: Term): Term {
+    if (a instanceof StringLiteral && b instanceof StringLiteral) {
+      return a.add(b)
+    }
+    throw new Error(`Cannot concatenate ${a.toRDF()} with ${b.toRDF()} because they are not strings.`)
+  },
+
+  'langmatches': function (langTag: Term, langRange: Term): Term {
     // Implements https://tools.ietf.org/html/rfc4647#section-3.3.1
-    const tag = langTag.value.toLowerCase()
-    const range = langRange.value.toLowerCase()
+    const tag = langTag.getValue().toLowerCase()
+    const range = langRange.getValue().toLowerCase()
     const test = tag === range ||
                   range === '*' ||
                   tag.substr(1, range.length + 1) === range + '-'
-    return terms.createBoolean(test)
+    return BooleanLiteral.fromBoolean(test)
   },
 
-  'regex': function (subject: terms.RDFTerm, pattern: terms.RDFTerm, flags: terms.RDFTerm) {
-    let regexp = (flags === null || flags === undefined) ? new RegExp(pattern.value) : new RegExp(pattern.value, flags.value)
-    return terms.createBoolean(regexp.test(subject.value))
+  'regex': function (subject: Term, pattern: Term, flags?: Term) {
+    let regexp = (flags === null || flags === undefined) ? new RegExp(pattern.getValue()) : new RegExp(pattern.getValue(), flags.getValue())
+    return BooleanLiteral.fromBoolean(regexp.test(subject.getValue()))
   },
 
   /*
     Functions on Numerics https://www.w3.org/TR/sparql11-query/#func-numerics
   */
 
-  'abs': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(Math.abs(a.asJS), rdf.XSD('integer'))
+  'abs': function (a: Term): Term {
+    if (a instanceof NumericLiteral) {
+      return NumericLiteral.fromInteger(Math.abs(a.toJS()))
+    }
+    throw new Error(`Cannot calculate the absolute value of ${a.toRDF()}, as it is not a number.`)
   },
 
-  'round': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(Math.round(a.asJS), rdf.XSD('integer'))
+  'round': function (a: Term): Term {
+    if (a instanceof NumericLiteral) {
+      return NumericLiteral.fromInteger(Math.round(a.toJS()))
+    }
+    throw new Error(`Cannot calculate the rounded value of ${a.toRDF()}, as it is not a number.`)
   },
 
-  'ceil': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(Math.ceil(a.asJS), rdf.XSD('integer'))
+  'ceil': function (a: Term): Term {
+    if (a instanceof NumericLiteral) {
+      return NumericLiteral.fromInteger(Math.ceil(a.toJS()))
+    }
+    throw new Error(`Cannot calculate the ceil value of ${a.toRDF()}, as it is not a number.`)
   },
 
-  'floor': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(Math.floor(a.asJS), rdf.XSD('integer'))
+  'floor': function (a: Term): Term {
+    if (a instanceof NumericLiteral) {
+      return NumericLiteral.fromInteger(Math.floor(a.toJS()))
+    }
+    throw new Error(`Cannot calculate the floor value of ${a.toRDF()}, as it is not a number.`)
   },
 
   /*
     Functions on Dates and Times https://www.w3.org/TR/sparql11-query/#func-date-time
   */
 
-  'now': function (): terms.RDFTerm {
-    return terms.createDate(moment())
+  'now': function (): Term {
+    return DateLiteral.now()
   },
 
-  'year': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.year(), rdf.XSD('integer'))
+  'year': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.year())
+    }
+    throw new Error(`Cannot get the year of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'month': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.month() + 1, rdf.XSD('integer'))
+  'month': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.month())
+    }
+    throw new Error(`Cannot get the month of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'day': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.date(), rdf.XSD('integer'))
+  'day': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.day())
+    }
+    throw new Error(`Cannot get the day of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'hours': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.hours(), rdf.XSD('integer'))
+  'hours': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.hours())
+    }
+    throw new Error(`Cannot get the hours of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'minutes': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.minutes(), rdf.XSD('integer'))
+  'minutes': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.minutes())
+    }
+    throw new Error(`Cannot get the minutes of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'seconds': function (a: terms.RDFTerm): terms.RDFTerm {
-    return terms.createNumber(a.asJS.seconds(), rdf.XSD('integer'))
+  'seconds': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.seconds())
+    }
+    throw new Error(`Cannot get the seconds of ${a.toRDF()}, as it is not a date.`)
   },
 
-  'tz': function (a: terms.RDFTerm): terms.RDFTerm {
-    const offset = a.asJS.utcOffset() / 60
-    return terms.createLiteral(offset.toString())
+  'tz': function (a: Term): Term {
+    if (a instanceof DateLiteral) {
+      return NumericLiteral.fromInteger(a.utcOffset() / 60)
+    }
+    throw new Error(`Cannot get the timezone of ${a.toRDF()}, as it is not a date.`)
   },
 
   /*

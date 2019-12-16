@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Variable } from '../rdf/rdf-model'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import { concat, intersection } from 'lodash'
@@ -43,13 +44,13 @@ export default function minus (leftSource: PipelineStage<Bindings>, rightSource:
   let op = engine.reduce(rightSource, (acc: Bindings[], b: Bindings) => concat(acc, b), [])
   return engine.mergeMap(op, (buffer: Bindings[]) => {
     return engine.filter(leftSource, (bindings: Bindings) => {
-      const leftKeys = Array.from(bindings.variables())
+      const leftKeys: Variable[] = Array.from(bindings.variables())
       // mu_a is compatible with mu_b if,
       // for all v in intersection(dom(mu_a), dom(mu_b)), mu_a[v] = mu_b[v]
       const isCompatible = buffer.some((b: Bindings) => {
         const rightKeys = Array.from(b.variables())
         const commonKeys = intersection(leftKeys, rightKeys)
-        return commonKeys.every((k: string) => b.get(k) === bindings.get(k))
+        return commonKeys.every((k: Variable) => b.get(k)!.equals(bindings.get(k)!))
       })
       // only output non-compatible bindings
       return !isCompatible

@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Variable, parseTerm } from '../rdf/rdf-model'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import { Algebra } from 'sparqljs'
@@ -37,10 +38,11 @@ import { Bindings } from '../rdf/bindings'
  */
 function _compileComparators (comparators: Algebra.OrderComparator[]) {
   const comparatorsFuncs = comparators.map((c: Algebra.OrderComparator) => {
+    const variable = parseTerm(c.expression) as Variable
     return (left: Bindings, right: Bindings) => {
-      if (left.get(c.expression)! < right.get(c.expression)!) {
+      if (left.get(variable)!.compareTo(right.get(variable)!) < 0) {
         return (c.ascending) ? -1 : 1
-      } else if (left.get(c.expression)! > right.get(c.expression)!) {
+      } else if (left.get(variable)!.compareTo(right.get(variable)!) > 0) {
         return (c.ascending) ? 1 : -1
       }
       return 0

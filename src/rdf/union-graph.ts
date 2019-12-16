@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Triple } from './rdf-model'
 import Graph from './graph'
 import { PipelineInput } from '../engine/pipeline/pipeline-engine'
 import { Pipeline } from '../engine/pipeline/pipeline'
@@ -51,15 +52,15 @@ export default class UnionGraph extends Graph {
     this._graphs = graphs
   }
 
-  insert (triple: Algebra.TripleObject): Promise<void> {
+  insert (triple: Triple): Promise<void> {
     return this._graphs[0].insert(triple)
   }
 
-  delete (triple: Algebra.TripleObject): Promise<void> {
+  delete (triple: Triple): Promise<void> {
     return this._graphs.reduce((prev, g) => prev.then(() => g.delete(triple)), Promise.resolve())
   }
 
-  find (triple: Algebra.TripleObject, context: ExecutionContext): PipelineInput<Algebra.TripleObject> {
+  find (triple: Triple, context: ExecutionContext): PipelineInput<Triple> {
     return Pipeline.getInstance().merge(...this._graphs.map(g => g.find(triple, context)))
   }
 
@@ -67,7 +68,7 @@ export default class UnionGraph extends Graph {
     return this._graphs.reduce((prev, g) => prev.then(() => g.clear()), Promise.resolve())
   }
 
-  estimateCardinality (triple: Algebra.TripleObject): Promise<number> {
+  estimateCardinality (triple: Triple): Promise<number> {
     return Promise.all(this._graphs.map(g => g.estimateCardinality(triple)))
       .then((cardinalities: number[]) => {
         return Promise.resolve(cardinalities.reduce((acc, x) => acc + x, 0))

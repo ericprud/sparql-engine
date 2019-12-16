@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Variable } from '../rdf/rdf-model'
 import { Pipeline } from '../engine/pipeline/pipeline'
 import { PipelineStage } from '../engine/pipeline/pipeline-engine'
 import SPARQLExpression from './expressions/sparql-expression'
@@ -41,7 +42,7 @@ import { CustomFunctions } from '../engine/plan-builder'
  * @param expression - SPARQL expression
  * @return A {@link PipelineStage} which evaluate the BIND operation
  */
-export default function bind (source: PipelineStage<Bindings>, variable: string, expression: Algebra.Expression | string, customFunctions?: CustomFunctions): PipelineStage<Bindings> {
+export default function bind (source: PipelineStage<Bindings>, variable: Variable, expression: Algebra.Expression | string, customFunctions?: CustomFunctions): PipelineStage<Bindings> {
   const expr = new SPARQLExpression(expression, customFunctions)
   return Pipeline.getInstance().map(source, bindings => {
     const res = bindings.clone()

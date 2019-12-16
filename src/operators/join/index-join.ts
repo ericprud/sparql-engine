@@ -24,13 +24,11 @@ SOFTWARE.
 
 'use strict'
 
+import { Triple, Variable } from '../../rdf/rdf-model'
 import { Pipeline } from '../../engine/pipeline/pipeline'
 import { PipelineStage } from '../../engine/pipeline/pipeline-engine'
 import Graph from '../../rdf/graph'
 import { Bindings, BindingBase } from '../../rdf/bindings'
-import { Algebra } from 'sparqljs'
-import { rdf } from '../../utils'
-import { mapKeys, pickBy } from 'lodash'
 import ExecutionContext from '../../engine/context/execution-context'
 
 /**
@@ -45,20 +43,24 @@ import ExecutionContext from '../../engine/context/execution-context'
  * @return A {@link PipelineStage} which evaluate the join
  * @author Thomas Minier
  */
-export default function indexJoin (source: PipelineStage<Bindings>, pattern: Algebra.TripleObject, graph: Graph, context: ExecutionContext) {
+export default function indexJoin (source: PipelineStage<Bindings>, pattern: Triple, graph: Graph, context: ExecutionContext) {
   const engine = Pipeline.getInstance()
   return engine.mergeMap(source, (bindings: Bindings) => {
     const boundedPattern = bindings.bound(pattern)
     // const hasVars = some(boundedPattern, (v: any) => v.startsWith('?'))
-    return engine.map(engine.from(graph.find(boundedPattern, context)), (item: Algebra.TripleObject) => {
-      let temp = pickBy(item, (v, k) => {
-        return rdf.isVariable(boundedPattern[k])
-      })
-      temp = mapKeys(temp, (v, k) => {
-        return boundedPattern[k]
-      })
+    return engine.map(engine.from(graph.find(boundedPattern, context)), (item: Triple) => {
+      const temp = new BindingBase()
+      if (pattern.getSubject().isVariable()) {
+        temp.set(pattern.getSubject() as Variable, item.getSubject())
+      }
+      if (pattern.getPredicate().isVariable()) {
+        temp.set(pattern.getPredicate() as Variable, item.getPredicate())
+      }
+      if (pattern.getObject().isVariable()) {
+        temp.set(pattern.getObject() as Variable, item.getObject())
+      }
       // if (size(temp) === 0 && hasVars) return null
-      return BindingBase.fromObject(temp).union(bindings)
+      return temp.union(bindings)
     })
   })
 }
