@@ -24,7 +24,7 @@ SOFTWARE.
 
 'use strict'
 
-import { Algebra } from 'sparqljs'
+import { Triple } from '../../rdf/rdf-model'
 
 const HINT_PREFIX = 'http://callidon.github.io/sparql-engine/hints#'
 
@@ -126,28 +126,28 @@ export class QueryHints {
   }
 }
 
-export function parseHints (bgp: Algebra.TripleObject[], previous?: QueryHints) : [Algebra.TripleObject[], QueryHints] {
+export function parseHints (bgp: Triple[], previous?: QueryHints): [Triple[], QueryHints] {
   let res = new QueryHints()
-  const regularTriples: Algebra.TripleObject[] = []
+  const regularTriples: Triple[] = []
   bgp.forEach(triple => {
-    if (triple.subject.startsWith(HINT_PREFIX)) {
-      if (triple.subject === HINT('Group')) {
-        switch (triple.predicate) {
+    if (triple.getSubject().getValue().startsWith(HINT_PREFIX)) {
+      if (triple.getSubject().getValue() === HINT('Group')) {
+        switch (triple.getPredicate().getValue()) {
           case HINT('HashJoin') :
             res.add(QUERY_HINT_SCOPE.BGP, QUERY_HINT.USE_HASH_JOIN)
             break
-            case HINT('SymmetricHashJoin') :
-              res.add(QUERY_HINT_SCOPE.BGP, QUERY_HINT.USE_SYMMETRIC_HASH_JOIN)
-              break
-            default:
-              break
+          case HINT('SymmetricHashJoin') :
+            res.add(QUERY_HINT_SCOPE.BGP, QUERY_HINT.USE_SYMMETRIC_HASH_JOIN)
+            break
+          default:
+            break
         }
       }
     } else {
       regularTriples.push(triple)
     }
   })
-  if (previous !== null && previous !== undefined) {
+  if (previous !== undefined) {
     res = res.merge(previous)
   }
   return [regularTriples, res]

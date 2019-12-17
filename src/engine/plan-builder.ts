@@ -26,6 +26,7 @@ SOFTWARE.
 
 // General libraries
 import { Algebra, Parser } from 'sparqljs'
+import { Term, Triple } from '../rdf/rdf-model'
 import { Consumable } from '../operators/update/consumer'
 // pipelining engine
 import { Pipeline } from '../engine/pipeline/pipeline'
@@ -65,9 +66,10 @@ import {
   sortBy
 } from 'lodash'
 
+import CustomFunctions from '../operators/expressions/custom-functions'
 import ExecutionContext from './context/execution-context'
 import { extractPropertyPaths } from './stages/rewritings'
-import { extendByBindings, deepApplyBindings, rdf } from '../utils'
+import { extendByBindings, rdf } from '../utils'
 
 const QUERY_MODIFIERS = {
   SELECT: select,
@@ -78,12 +80,7 @@ const QUERY_MODIFIERS = {
 /**
  * Output of a physical query execution plan
  */
-export type QueryOutput = Bindings | Algebra.TripleObject | boolean
-
-/**
- * Type alias to describe the shape of custom functions. It's basically a JSON object from an IRI (in string form) to a function of 0 to many RDFTerms that produces an RDFTerm.
- */
-export type CustomFunctions = { [key: string]: (...args: (terms.RDFTerm | terms.RDFTerm[] | null)[]) => terms.RDFTerm }
+export type QueryOutput = Bindings | Triple | boolean
 
 /*
  * Class of SPARQL operations that are evaluated by a Stage Builder
@@ -114,7 +111,7 @@ export enum SPARQL_OPERATION {
  */
 export class PlanBuilder {
   private readonly _dataset: Dataset
-  private readonly _parser: Parser
+  private readonly _parser: SparqlParser
   private _optimizer: Optimizer
   private _stageBuilders: Map<SPARQL_OPERATION, StageBuilder>
   private _customFunctions: CustomFunctions | undefined
@@ -174,16 +171,16 @@ export class PlanBuilder {
    * @param  options  - Execution options
    * @return A {@link PipelineStage} or a {@link Consumable} that can be consumed to evaluate the query.
    */
-  build (query: any, context?: ExecutionContext): PipelineStage<QueryOutput> | Consumable {
+  build (query: Algebra.RootNode | string, context?: ExecutionContext): PipelineStage<QueryOutput> | Consumable {
     // If needed, parse the string query into a logical query execution plan
     if (typeof query === 'string') {
-      query = this._parser.parse(query)
+      query = this._parser.parse(query) as Algebra.RootNode
     }
     if (isNull(context) || isUndefined(context)) {
       context = new ExecutionContext()
     }
     // Optimize the logical query execution plan
-    query = this._optimizer.optimize(query)
+    // query = this._optimizer.optimize(query)
     // build physical query execution plan, depending on the query type
     switch (query.type) {
       case 'query':
@@ -246,7 +243,7 @@ export class PlanBuilder {
 
     // Handles WHERE clause
     let graphIterator: PipelineStage<Bindings>
-    if (query.where != null && query.where.length > 0) {
+    if (query.where.length > 0) {
       graphIterator = this._buildWhere(source, query.where, context)
     } else {
       graphIterator = engine.of(new BindingBase())
@@ -337,7 +334,7 @@ export class PlanBuilder {
     let prec = null
     for (let i = 0; i < groups.length; i++) {
       let group = groups[i]
-      if (group.type === 'bgp' && prec != null && prec.type === 'bgp') {
+      if (group.type === 'bgp' && prec !== null && prec.type === 'bgp') {
         let lastGroup = newGroups[newGroups.length - 1] as Algebra.BGPNode
         lastGroup.triples = lastGroup.triples.concat((group as Algebra.BGPNode).triples)
       } else {

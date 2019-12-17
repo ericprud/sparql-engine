@@ -28,12 +28,10 @@ import { Term, Variable, parseTerm } from '../../rdf/rdf-model'
 import { ConcreteTerm } from '../../rdf/rdf-terms'
 import SPARQL_AGGREGATES from './sparql-aggregates'
 import SPARQL_OPERATIONS from './sparql-operations'
-import { terms } from '../../rdf-terms'
-import { rdf } from '../../utils'
 import { isArray, isString } from 'lodash'
 import { Algebra } from 'sparqljs'
 import { Bindings } from '../../rdf/bindings'
-import { CustomFunctions } from '../../engine/plan-builder'
+import CustomFunctions from './custom-functions'
 
 /**
  * An input SPARQL expression to be compiled
@@ -144,7 +142,7 @@ export default class SPARQLExpression {
         }
       }
     }
-    throw new Error(`Unsupported SPARQL operation type found: ${expression.type}`)
+    throw new Error(`Unsupported SPARQL operation type found: ${expression}`)
   }
 
   /**

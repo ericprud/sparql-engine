@@ -1,7 +1,7 @@
-/* file : bind-stage-builder.ts
+/* file : node-triple.ts
 MIT License
 
-Copyright (c) 2019 Thomas Minier
+Copyright (c) 2018-2020 Thomas Minier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-'use strict'
-
-import { Term, Variable } from '../../rdf/rdf-model'
-import StageBuilder from './stage-builder'
-import bind from '../../operators/bind'
+import { Triple, parseTriple } from '../rdf/rdf-model'
+import { Node } from './node-base'
 import { Algebra } from 'sparqljs'
-import { PipelineStage } from '../pipeline/pipeline-engine'
-import { Bindings } from '../../rdf/bindings'
-import ExecutionContext from '../context/execution-context'
-
-export type CustomFunctions = { [key: string]: (...args: (Term | Term[] | null)[]) => Term }
 
 /**
- * A BindStageBuilder evaluates BIND clauses
+ * An operation that must evaluates a triple pattern against a RDF Graph
  * @author Thomas Minier
  */
-export default class BindStageBuilder extends StageBuilder {
-  execute (source: PipelineStage<Bindings>, bindNode: Algebra.BindNode, customFunctions: CustomFunctions, context: ExecutionContext): PipelineStage<Bindings> {
-    return bind(source, Variable.allocate(bindNode.variable), bindNode.expression, customFunctions)
+export default class NodeTriple implements Node {
+  private readonly _triple: Triple
+
+  constructor (triple: Triple) {
+    this._triple = triple
+  }
+
+  /**
+   * Build a {@link NodeTriple} from its representation in sparql.js
+   * @param obj - Object representation in sparql.js format
+   * @return A NodeTriple
+   */
+  static fromObject (obj: Algebra.TripleObject): NodeTriple {
+    return new NodeTriple(parseTriple(obj.subject, obj.predicate, obj.object))
+  }
+
+  /**
+   * Get the Node inner triple pattern
+   */
+  getTriple (): Triple {
+    return this._triple
+  }
+
+  equals (other: Node): boolean {
+    return other instanceof NodeTriple && this._triple.equals(other.getTriple())
   }
 }

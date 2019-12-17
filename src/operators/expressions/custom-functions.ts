@@ -1,7 +1,7 @@
-/* file : bind-stage-builder.ts
+/* file : custom-functions.ts
 MIT License
 
-Copyright (c) 2019 Thomas Minier
+Copyright (c) 2018 Thomas Minier
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,24 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-'use strict'
-
-import { Term, Variable } from '../../rdf/rdf-model'
-import StageBuilder from './stage-builder'
-import bind from '../../operators/bind'
-import { Algebra } from 'sparqljs'
-import { PipelineStage } from '../pipeline/pipeline-engine'
-import { Bindings } from '../../rdf/bindings'
-import ExecutionContext from '../context/execution-context'
-
-export type CustomFunctions = { [key: string]: (...args: (Term | Term[] | null)[]) => Term }
+import { Term } from '../../rdf/rdf-model'
 
 /**
- * A BindStageBuilder evaluates BIND clauses
- * @author Thomas Minier
+ * Type alias to describe the shape of custom functions. It's basically a JSON object from an IRI (in string form) to a function of 0 to many RDFTerms that produces an RDFTerm.
  */
-export default class BindStageBuilder extends StageBuilder {
-  execute (source: PipelineStage<Bindings>, bindNode: Algebra.BindNode, customFunctions: CustomFunctions, context: ExecutionContext): PipelineStage<Bindings> {
-    return bind(source, Variable.allocate(bindNode.variable), bindNode.expression, customFunctions)
-  }
-}
+export default type CustomFunctions = { [key: string]: (...args: (Term | Term[] | null)[]) => Term }

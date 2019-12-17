@@ -1,4 +1,4 @@
-/* file : bind-stage-builder.ts
+/* file : join-distribution.ts
 MIT License
 
 Copyright (c) 2019 Thomas Minier
@@ -24,22 +24,18 @@ SOFTWARE.
 
 'use strict'
 
-import { Term, Variable } from '../../rdf/rdf-model'
-import StageBuilder from './stage-builder'
-import bind from '../../operators/bind'
+import PlanVisitor from '../plan-visitor'
 import { Algebra } from 'sparqljs'
-import { PipelineStage } from '../pipeline/pipeline-engine'
-import { Bindings } from '../../rdf/bindings'
-import ExecutionContext from '../context/execution-context'
-
-export type CustomFunctions = { [key: string]: (...args: (Term | Term[] | null)[]) => Term }
+import { cloneDeep, partition } from 'lodash'
 
 /**
- * A BindStageBuilder evaluates BIND clauses
+ * Implements the JOIN distribution over UNION rule: (P1 U P2) join P3 = (P1 join P3) U (P2 join P3)
  * @author Thomas Minier
  */
-export default class BindStageBuilder extends StageBuilder {
-  execute (source: PipelineStage<Bindings>, bindNode: Algebra.BindNode, customFunctions: CustomFunctions, context: ExecutionContext): PipelineStage<Bindings> {
-    return bind(source, Variable.allocate(bindNode.variable), bindNode.expression, customFunctions)
+export default class JoinDistribution extends PlanVisitor {
+  visitGroup(node: Algebra.GroupNode): Algebra.PlanNode {
+    const newNode = cloneDeep(node)
+    // TODO
+    return newNode
   }
 }

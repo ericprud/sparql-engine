@@ -24,11 +24,11 @@ SOFTWARE.
 
 'use strict'
 
+import { Triple, parseTriple } from '../../rdf/rdf-model'
 import { Pipeline } from '../../engine/pipeline/pipeline'
 import { PipelineStage } from '../../engine/pipeline/pipeline-engine'
 import { Algebra } from 'sparqljs'
 import { compact } from 'lodash'
-import { rdf } from '../../utils'
 import { Bindings } from '../../rdf/bindings'
 
 /**
@@ -39,15 +39,15 @@ import { Bindings } from '../../rdf/bindings'
  * @return A {@link PipelineStage} which evaluate the CONSTRUCT modifier
  * @author Thomas Minier
  */
-export default function construct (source: PipelineStage<Bindings>, query: any) {
-  const rawTriples: Algebra.TripleObject[] = []
-  const templates: Algebra.TripleObject[] = query.template!.filter((t: any) => {
-    if (rdf.isVariable(t.subject) || rdf.isVariable(t.predicate) || rdf.isVariable(t.object)) {
+export default function construct (source: PipelineStage<Bindings>, query: Algebra.RootNode) {
+  const rawTriples: Triple[] = []
+  const templates: Triple[] = query.template!.filter((t: Algebra.TripleObject) => {
+    if (t.subject.startsWith('?') || t.predicate.startsWith('?') || t.object.startsWith('?')) {
       return true
     }
-    rawTriples.push(t)
+    rawTriples.push(parseTriple(t.subject, t.predicate, t.object))
     return false
-  })
+  }).map(t => parseTriple(t.subject, t.predicate, t.object))
   const engine = Pipeline.getInstance()
   return engine.endWith(engine.flatMap(source, (bindings: Bindings) => {
     return compact(templates.map(t => bindings.bound(t)))

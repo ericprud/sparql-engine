@@ -24,6 +24,7 @@ SOFTWARE.
 
 'use strict'
 
+import { Term, Triple, Variable } from '../../rdf/rdf-model'
 import StageBuilder from './stage-builder'
 import { Pipeline } from '../pipeline/pipeline'
 import { PipelineStage, PipelineEngine } from '../pipeline/pipeline-engine'
@@ -43,18 +44,18 @@ import { rdf } from '../../utils'
  * available
  * @private
  */
- function bgpEvaluation (source: PipelineStage<Bindings>, bgp: Algebra.TripleObject[], graph: Graph, context: ExecutionContext) {
-   const engine = Pipeline.getInstance()
-   return engine.mergeMap(source, (bindings: Bindings) => {
-     let boundedBGP = bgp.map(t => bindings.bound(t))
-     // const hasVars = boundedBGP.map(p => some(p, v => v!.startsWith('?')))
-     //   .reduce((acc, v) => acc && v, true)
-     return engine.map(graph.evalBGP(boundedBGP, context), (item: Bindings) => {
-       // if (item.size === 0 && hasVars) return null
-       return item.union(bindings)
-     })
-   })
- }
+function bgpEvaluation (source: PipelineStage<Bindings>, bgp: Triple[], graph: Graph, context: ExecutionContext) {
+  const engine = Pipeline.getInstance()
+  return engine.mergeMap(source, (bindings: Bindings) => {
+    let boundedBGP = bgp.map(t => bindings.bound(t))
+    // const hasVars = boundedBGP.map(p => some(p, v => v!.startsWith('?')))
+    //   .reduce((acc, v) => acc && v, true)
+    return engine.map(graph.evalBGP(boundedBGP, context), (item: Bindings) => {
+      // if (item.size === 0 && hasVars) return null
+      return item.union(bindings)
+    })
+  })
+}
 
 /**
  * A BGPStageBuilder evaluates Basic Graph Patterns in a SPARQL query.
@@ -87,9 +88,9 @@ export default class BGPStageBuilder extends StageBuilder {
    * @param  options   - Execution options
    * @return A {@link PipelineStage} used to evaluate a Basic Graph pattern
    */
-  execute (source: PipelineStage<Bindings>, patterns: Algebra.TripleObject[], context: ExecutionContext): PipelineStage<Bindings> {
+  execute (source: PipelineStage<Bindings>, patterns: Triple[], context: ExecutionContext): PipelineStage<Bindings> {
     // avoids sending a request with an empty array
-    if(patterns.length == 0) return source
+    if (patterns.length === 0) return source
 
     // extract eventual query hints from the BGP & merge them into the context
     let extraction = parseHints(patterns, context.hints)
@@ -98,22 +99,22 @@ export default class BGPStageBuilder extends StageBuilder {
     const [bgp, artificals] = this._replaceBlankNodes(extraction[0])
 
     // if the graph is a variable, go through each binding and look for its value
-    if(context.defaultGraphs.length > 0 && rdf.isVariable(context.defaultGraphs[0])) {
+    if (context.defaultGraphs.length > 0 && rdf.isVariable(context.defaultGraphs[0])) {
       const engine = Pipeline.getInstance()
       return engine.mergeMap(source, (value: Bindings) => {
-        const iri = value.get(context.defaultGraphs[0])
+        const iri = value.get(Variable.allocate(context.defaultGraphs[0]))
 
-        //if the graph doesn't exist in the dataset, then create one with the createGraph factrory
-        const graphs = this.dataset.getAllGraphs().filter(g => g.iri === iri)
-        const graph = (graphs.length > 0) ? graphs[0] : (iri !== null) ? this.dataset.createGraph(iri) : null
-        if(graph){
+        // if the graph doesn't exist in the dataset, then create one with the createGraph factrory
+        const graphs = this.dataset.getAllGraphs().filter(g => g.iri === iri?.toJS())
+        const graph = (graphs.length > 0) ? graphs[0] : (iri !== null) ? this.dataset.createGraph(iri.toJS()) : null
+        if (graph) {
           let iterator = this._buildIterator(engine.from([value]), graph, bgp, context)
           if (artificals.length > 0) {
             iterator = engine.map(iterator, (b: Bindings) => b.filter(variable => artificals.indexOf(variable) < 0))
           }
           return iterator
         }
-        throw `Cant' find or create the graph ${iri}`
+        throw new Error(`Cant' find or create the graph ${iri}`)
       })
     }
 
@@ -131,24 +132,19 @@ export default class BGPStageBuilder extends StageBuilder {
    * @param patterns - BGP to rewrite, i.e., a set of triple patterns
    * @return A Tuple [Rewritten BGP, List of SPARQL variable added]
    */
-  _replaceBlankNodes (patterns: Algebra.TripleObject[]): [Algebra.TripleObject[], string[]] {
-    const newVariables: string[] = []
-    function rewrite (term: string): string {
+  _replaceBlankNodes (patterns: Triple[]): [Triple[], Variable[]] {
+    const newVariables: Variable[] = []
+    function rewrite (term: Term): Term {
       let res = term
-      if (term.startsWith('_:')) {
-        res = '?' + term.slice(2)
-        if (newVariables.indexOf(res) < 0) {
-          newVariables.push(res)
+      if (term.isVariable() && term instanceof Variable) {
+        if (newVariables.indexOf(term) < 0) {
+          newVariables.push(term)
         }
       }
       return res
     }
     const newBGP = patterns.map(p => {
-      return {
-        subject: rewrite(p.subject),
-        predicate: rewrite(p.predicate),
-        object: rewrite(p.object)
-      }
+      return new Triple(rewrite(p.getSubject()), rewrite(p.getPredicate()), rewrite(p.getObject()))
     })
     return [newBGP, newVariables]
   }
@@ -162,7 +158,7 @@ export default class BGPStageBuilder extends StageBuilder {
    * @param  isJoinIdentity - True if the source iterator is the starting iterator of the pipeline
    * @return A {@link PipelineStage} used to evaluate a Basic Graph pattern
    */
-  _buildIterator (source: PipelineStage<Bindings>, graph: Graph, patterns: Algebra.TripleObject[], context: ExecutionContext): PipelineStage<Bindings> {
+  _buildIterator (source: PipelineStage<Bindings>, graph: Graph, patterns: Triple[], context: ExecutionContext): PipelineStage<Bindings> {
     // if (graph._isCapable(GRAPH_CAPABILITY.UNION)) {
     //   return boundJoin(source, patterns, graph, context)
     // }

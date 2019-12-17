@@ -24,6 +24,8 @@ SOFTWARE.
 
 'use strict'
 
+import { Variable } from '../../rdf/rdf-model'
+import { StringLiteral } from '../../rdf/literals'
 import { Pipeline } from '../../engine/pipeline/pipeline'
 import { PipelineStage } from '../../engine/pipeline/pipeline-engine'
 import { Algebra } from 'sparqljs'
@@ -40,19 +42,21 @@ import { Bindings } from '../../rdf/bindings'
  * @return A {@link PipelineStage} which evaluate the SELECT modifier
  */
 export default function select (source: PipelineStage<Bindings>, query: Algebra.RootNode) {
-  const variables = <string[]> query.variables
+  const variables = query.variables as string[]
   const selectAll = variables.length === 1 && variables[0] === '*'
   return Pipeline.getInstance().map(source, (bindings: Bindings) => {
     if (!selectAll) {
       bindings = variables.reduce((obj, v) => {
-        if (bindings.has(v)) {
-          obj.set(v, bindings.get(v)!)
+        const variable = Variable.allocate(v)
+        if (bindings.has(variable)) {
+          obj.set(variable, bindings.get(variable)!)
         } else {
-          obj.set(v, 'UNBOUND')
+          obj.set(variable, new StringLiteral('UNBOUND', null, null))
         }
         return obj
       }, bindings.empty())
     }
-    return bindings.mapValues((k, v) => rdf.isVariable(k) && typeof v === 'string' ? v : null)
+    // remove non-variable bindings
+    return bindings.mapValues((k, v) => k.isVariable() ? v : null)
   })
 }
